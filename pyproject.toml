@@ -1,0 +1,11 @@
+[project]
+name = "test-pypng"
+version = "0.0.0"
+requires-python = ">=3.14"
+
+dependencies = [
+    "pypng",
+]
+
+[tool.uv.sources]
+pypng = { git = "https://gitlab.com/drj11/pypng", rev = "f6899c489814c41c8a556681c0446e858b8d99c5" }

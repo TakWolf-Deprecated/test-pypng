@@ -1,0 +1,19 @@
+version = 1
+revision = 3
+requires-python = ">=3.14"
+
+[[package]]
+name = "pypng"
+version = "0.20250521.0"
+source = { git = "https://gitlab.com/drj11/pypng?rev=f6899c489814c41c8a556681c0446e858b8d99c5#f6899c489814c41c8a556681c0446e858b8d99c5" }
+
+[[package]]
+name = "test-pypng"
+version = "0.0.0"
+source = { virtual = "." }
+dependencies = [
+    { name = "pypng" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "pypng", git = "https://gitlab.com/drj11/pypng?rev=f6899c489814c41c8a556681c0446e858b8d99c5" }]
