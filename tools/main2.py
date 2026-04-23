@@ -1,18 +1,26 @@
-import zlib
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+from pathlib import Path
 import struct
+import zlib
+
+import png
+
 
 def analyze_png_bytes(source_path, output_path):
     """
-    喵～分析两个 PNG 文件的字节差异，确认是否为 zlib 压缩问题
+    Analyze PNG byte differences to confirm if zlib compression is the cause.
+    Returns True if pixel data matches (even if compressed bytes differ).
     """
-    print("\n🐾 正在检查 PNG 字节差异...")
+    print("\n[Analyze] Checking PNG byte differences...")
 
-    # ------------------- 读取原始 PNG 的 IDAT 数据 -------------------
+    # --- Read IDAT chunks from source PNG ---
     with source_path.open('rb') as f:
         sig = f.read(8)
         if sig != b'\x89PNG\r\n\x1a\n':
-            print("❌ 源文件不是合法 PNG")
-            return
+            print("ERROR: Source file is not a valid PNG")
+            return False
         idat_chunks_src = []
         while True:
             length_data = f.read(4)
@@ -27,9 +35,9 @@ def analyze_png_bytes(source_path, output_path):
             elif chunk_type == b'IEND':
                 break
     src_idat = b''.join(idat_chunks_src)
-    print(f"  📦 原始 IDAT 总大小: {len(src_idat)} bytes")
+    print(f"  Original IDAT total size: {len(src_idat)} bytes")
 
-    # ------------------- 读取重写 PNG 的 IDAT 数据 -------------------
+    # --- Read IDAT chunks from output PNG ---
     with output_path.open('rb') as f:
         f.read(8)
         idat_chunks_out = []
@@ -46,72 +54,61 @@ def analyze_png_bytes(source_path, output_path):
             elif chunk_type == b'IEND':
                 break
     out_idat = b''.join(idat_chunks_out)
-    print(f"  📦 重写 IDAT 总大小: {len(out_idat)} bytes")
+    print(f"  Output IDAT total size: {len(out_idat)} bytes")
 
-    # ------------------- zlib 版本信息 -------------------
-    print(f"  🧪 zlib 版本: {zlib.ZLIB_VERSION} (运行时)")
-    print(f"  🧪 zlib 库名: {zlib.ZLIB_RUNTIME_VERSION}")
+    # --- zlib version info ---
+    print(f"  zlib version: {zlib.ZLIB_VERSION} (runtime)")
 
-    # ------------------- 比较 IDAT 原始字节 -------------------
+    # --- Compare compressed bytes ---
     if src_idat == out_idat:
-        print("\n✅ IDAT 压缩数据完全一致！问题不在 zlib，可能是其他 chunk 差异喵。")
-        # 但仍然可以继续检查像素
+        print("\n[OK] IDAT compressed data is identical.")
     else:
-        print("\n⚠️  IDAT 压缩数据不同！（疑似 zlib 非确定性输出）")
+        print("\n[WARN] IDAT compressed data differs (possible zlib non-determinism).")
 
-    # ------------------- 解压并比较像素数据 -------------------
+    # --- Decompress and compare raw pixel data ---
     src_pixels = zlib.decompress(src_idat)
     out_pixels = zlib.decompress(out_idat)
-    print(f"  🎨 解压后原始像素大小: {len(src_pixels)} bytes")
-    print(f"  🎨 解压后重写像素大小: {len(out_pixels)} bytes")
+    print(f"  Decompressed source pixel size: {len(src_pixels)} bytes")
+    print(f"  Decompressed output pixel size: {len(out_pixels)} bytes")
 
     if src_pixels == out_pixels:
-        print("✅ 解压后的像素数据完全一致！")
+        print("[OK] Decompressed pixel data is identical!")
         if src_idat != out_idat:
-            print("👉 结论：**确认是 zlib 压缩输出不一致导致的问题喵～**")
-            print("   尽管压缩流不同，但图像内容无损。测试应该比较像素而非字节。")
+            print("-> Conclusion: zlib compression output differs, but image content is lossless.")
+            print("   Tests should compare pixel data, not raw bytes.")
+        return True
     else:
-        print("❌ 解压后的像素数据也不一致！存在更深层的问题喵！")
-        # 可以打印前几个不同字节帮助调试
+        print("[ERROR] Decompressed pixel data differs! Deeper issue exists.")
         diff_pos = next((i for i, (a, b) in enumerate(zip(src_pixels, out_pixels)) if a != b), None)
         if diff_pos is not None:
-            print(f"   第一个差异位置: 字节 {diff_pos}")
-
-    # ------------------- 额外检查：文件大小 -------------------
-    src_size = source_path.stat().st_size
-    out_size = output_path.stat().st_size
-    print(f"\n📄 源文件大小: {src_size} bytes")
-    print(f"📄 重写文件大小: {out_size} bytes")
-    if src_size != out_size:
-        print("   （文件总大小不同，可能存在非 IDAT 块差异，例如 tEXt/chunk 顺序等）")
-
-    return src_pixels == out_pixels
+            print(f"   First difference at byte offset: {diff_pos}")
+        return False
 
 
 def main():
-    from pathlib import Path
-    import png
-
     project_root_dir = Path(__file__).parent.joinpath('..').resolve()
+
+    # Original PNG file (already formatted by pypng or any valid PNG)
     source_file_path = project_root_dir.joinpath('assets', 'test.png')
+
+    # Output file
     output_file_path = project_root_dir.joinpath('build', 'test.png')
     output_file_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # 读取 & 重写
+    # Read and rewrite PNG using pypng
     width, height, rows, info = png.Reader(filename=source_file_path).read()
     with output_file_path.open('wb') as file:
         writer = png.Writer(width, height, **info)
         writer.write(file, rows)
 
-    # 喵～分析差异
+    # Analyze the byte differences
     pixels_match = analyze_png_bytes(source_file_path, output_file_path)
 
-    # 如果像素一致，我们可以认为测试通过
-    if pixels_match:
-        print("\n🎉 测试通过：图像内容无损，只是压缩流不同喵～")
-    else:
-        print("\n💥 测试失败：像素数据不一致，需要深入调查喵！")
-        raise AssertionError("像素数据不一致！")
+    # If pixel data is identical, the test passes (even if compressed bytes differ)
+    if not pixels_match:
+        raise AssertionError("Pixel data mismatch between source and rewritten PNG!")
+
+    print("\n[PASS] Test completed successfully.")
 
 
 if __name__ == '__main__':
